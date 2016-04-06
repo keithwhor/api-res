@@ -163,8 +163,6 @@ module.exports = (() => {
       this.ssl = ssl;
       this._headers = {};
 
-      console.log(this);
-
     }
 
     authorize(accessToken) {
