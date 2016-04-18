@@ -17,6 +17,7 @@ module.exports = (() => {
 
     headers(obj) {
       this._headers = obj;
+      return this;
     }
 
     /* CRUD Methods */
@@ -93,7 +94,7 @@ module.exports = (() => {
         host: this.parent.host,
         method: method,
         port: this.parent.port,
-        path: `${path}/${id || ''}?${params}`
+        path: `${path}${id ? '/' + id : ''}?${params}`
       }, (res) => {
 
         let buffers = [];
@@ -105,10 +106,12 @@ module.exports = (() => {
 
             if (expectJSON) {
 
+              let str = Buffer.concat(buffers).toString();
+
               try {
-                response = JSON.parse(Buffer.concat(buffers).toString());
+                response = JSON.parse(str);
               } catch (e) {
-                return callback(new Error('Unexpected server response'), {});
+                return callback(new Error(['Unexpected server response:', str].join('\n')), {});
               }
 
               if (response.meta && response.meta.error) {
