@@ -82,19 +82,27 @@ module.exports = (() => {
 
       if (data && typeof data === 'object' && !(data instanceof Buffer)) {
         try {
-          data = JSON.stringify(data);
-          headers['Content-Type'] = 'application/json';
+          if (data.hasOwnProperty('__serialize__')) {
+            delete data.__serialize__;
+            data = this.parent.serialize(data);
+            headers['Content-Type'] = 'application/x-www-form-urlencoded';
+          } else {
+            data = JSON.stringify(data);
+            headers['Content-Type'] = 'application/json; charset=utf-8';
+          }
         } catch (e) {
           // do nothing
         }
       }
+
+      let url = `${path}${id ? '/' + id : ''}?${params}`;
 
       (this.parent.ssl ? https : http).request({
         headers: headers,
         host: this.parent.host,
         method: method,
         port: this.parent.port,
-        path: `${path}${id ? '/' + id : ''}?${params}`
+        path: url
       }, (res) => {
 
         let buffers = [];

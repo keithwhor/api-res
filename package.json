@@ -1,6 +1,6 @@
 {
   "name": "api-res",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "API Resource requests, intended for Nodal API Services",
   "main": "module.js",
   "scripts": {
