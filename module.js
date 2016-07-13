@@ -123,7 +123,11 @@ module.exports = (() => {
               }
 
               if (response.meta && response.meta.error) {
-                return callback(new Error(response.meta.error.message), response, res.headers, res.statusCode);
+                let error = new Error(response.meta.error.message);
+                if (response.meta.error.details) {
+                  error.details = response.meta.error.details;
+                }
+                return callback(error, response, res.headers, res.statusCode);
               }
 
             } else {
