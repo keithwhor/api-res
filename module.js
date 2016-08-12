@@ -154,17 +154,19 @@ module.exports = (() => {
 
       if (host.indexOf('https://') === 0) {
         host = host.substr(8);
-        port = port || 443;
+        port = parseInt(port) || 443;
         ssl = true;
       } else if (host.indexOf('http://') === 0) {
         host = host.substr(7);
-        port = port || 80;
+        port = parseInt(port) || 80;
         ssl = false;
-      } else if (port === 443) {
-        ssl = true;
       } else {
-        port = 80;
+        port = parseInt(port) || 80;
         ssl = false;
+      }
+
+      if (port === 443) {
+        ssl = true;
       }
 
       if (host.split(':').length > 1) {
