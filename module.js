@@ -132,7 +132,7 @@ module.exports = (() => {
 
             } else {
 
-              response = Buffer.concat(buffer);
+              response = Buffer.concat(buffers);
 
             }
 
