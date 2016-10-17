@@ -70,15 +70,49 @@ module.exports = (() => {
       return this.__request__(false, method, id, params, data, callback);
     }
 
+    stream(method, data, onMessage, callback) {
+
+      let headers = this.__formatHeaders__();
+      let url = this.path;
+
+      this.__send__(method, url, headers, data, (err, res) => {
+
+        if (err) {
+          return callback(err);
+        }
+
+        let buffers = [];
+
+        res.on('data', chunk => {
+          buffers.push(chunk);
+          onMessage(chunk);
+        });
+
+        res.on('end', () => {
+          callback(null, Buffer.concat(buffers));
+        });
+
+      });
+
+    }
+
+    __formatHeaders__() {
+
+      let headers = {};
+
+      Object.keys(this.parent._headers).forEach(k => headers[k] = this.parent._headers[k]);
+      Object.keys(this._headers).forEach(k => headers[k] = this._headers[k]);
+
+      return headers;
+
+    }
+
     __request__(expectJSON, method, id, params, data, callback) {
 
       params = this.parent.serialize(params);
 
       let path = this.path;
-      let headers = {};
-
-      Object.keys(this.parent._headers).forEach(k => headers[k] = this.parent._headers[k]);
-      Object.keys(this._headers).forEach(k => headers[k] = this._headers[k]);
+      let headers = this.__formatHeaders__();
 
       if (data && typeof data === 'object' && !(data instanceof Buffer)) {
         try {
@@ -97,13 +131,11 @@ module.exports = (() => {
 
       let url = `${path}${id ? '/' + id : ''}?${params}`;
 
-      (this.parent.ssl ? https : http).request({
-        headers: headers,
-        host: this.parent.host,
-        method: method,
-        port: this.parent.port,
-        path: url
-      }, (res) => {
+      this.__send__(method, url, headers, data, (err, res) => {
+
+        if (err) {
+          return callback(new Error('Server unavailable'), {}, {}, 0);
+        }
 
         let buffers = [];
         res
@@ -112,7 +144,7 @@ module.exports = (() => {
 
             let response;
 
-            if (expectJSON) {
+            if ((res.headers['content-type'] || '').split(';')[0] === 'application/json') {
 
               let str = Buffer.concat(buffers).toString();
 
@@ -123,11 +155,15 @@ module.exports = (() => {
               }
 
               if (response.meta && response.meta.error) {
+
                 let error = new Error(response.meta.error.message);
+
                 if (response.meta.error.details) {
                   error.details = response.meta.error.details;
                 }
+
                 return callback(error, response, res.headers, res.statusCode);
+
               }
 
             } else {
@@ -136,12 +172,35 @@ module.exports = (() => {
 
             }
 
-            return callback(null, response, res.headers, res.statusCode);
+            if (response instanceof Buffer && Math.floor(res.statusCode / 100) !== 2) {
+
+              return callback(new Error(response.toString()), response, res.headers, res.statusCode);
+
+            } else {
+
+              return callback(null, response, res.headers, res.statusCode);
+
+            }
 
           });
 
-      })
-      .on('error', (e) => callback(new Error('Server unavailable'), {}, {}, 0))
+      });
+
+    }
+
+    __send__(method, url, headers, data, callback) {
+
+      (this.parent.ssl ? https : http).request(
+        {
+          headers: headers,
+          host: this.parent.host,
+          method: method,
+          port: this.parent.port,
+          path: url
+        },
+        (res) => callback(null, res)
+      )
+      .on('error', (err) => callback(new Error('Server unavailable')))
       .end(data || null);
 
     }
