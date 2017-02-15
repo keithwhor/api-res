@@ -109,7 +109,7 @@ module.exports = (() => {
 
     __request__(expectJSON, method, id, params, data, callback) {
 
-      params = this.parent.serialize(params);
+      params = this.parent.serialize(params, true);
 
       let path = this.path;
       let headers = this.__formatHeaders__();
@@ -281,12 +281,12 @@ module.exports = (() => {
 
     }
 
-    serialize(obj) {
+    serialize(obj, URIEncoded) {
 
       obj = obj || {};
 
       let newObj = {};
-      Object.keys(obj).forEach(k => newObj[k] = obj[k]);
+      Object.keys(obj).forEach(k => newObj[k] = URIEncoded ? encodeURIComponent(obj[k]) : obj[k]);
 
       return Object.keys(newObj).map(this.__serialize__.bind(this, newObj, [])).join('&');
 
