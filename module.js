@@ -1,195 +1,165 @@
-module.exports = (() => {
+const https = require('https');
+const http = require('http');
 
-  'use strict';
+class APIResourceRequest {
 
-  const https = require('https');
-  const http = require('http');
+  constructor (parent, path) {
 
-  class APIResourceRequest {
+    this.parent = parent;
+    this.path = path[0] === '/' ? path : `/${path}`;
+    this._headers = {};
 
-    constructor(parent, path) {
+  }
 
-      this.parent = parent;
-      this.path = path[0] === '/' ? path : `/${path}`;
-      this._headers = {};
+  headers (obj) {
+    this._headers = obj;
+    return this;
+  }
 
-    }
+  /* CRUD Methods */
 
-    headers(obj) {
-      this._headers = obj;
-      return this;
-    }
+  async index (params) {
+    return await this.get(null, params);
+  }
 
-    /* CRUD Methods */
+  async show (id, params) {
+    return await this.get(id, params);
+  }
 
-    index(params, callback) {
-      return this.get(null, params, callback);
-    }
+  async destroy (id, params) {
+    return await this.del(id, params);
+  }
 
-    show(id, params, callback) {
-      return this.get(id, params, callback);
-    }
+  async update (id, params, data) {
+    return await this.put(id, params, data);
+  }
 
-    destroy(id, params, callback) {
-      return this.del(id, params, callback);
-    }
+  async create (params, data) {
+    return await this.post(null, params, data);
+  }
 
-    update(id, params, data, callback) {
-      return this.put(id, params, data, callback);
-    }
+  /* HTTP methods */
 
-    create(params, data, callback) {
-      return this.post(null, params, data, callback);
-    }
+  async put (id, params, data) {
+    return await this.requestJSON('PUT', id, params, data);
+  }
 
-    /* HTTP methods */
+  async post (id, params, data) {
+    return await this.requestJSON('POST', id, params, data);
+  }
 
-    put(id, params, data, callback) {
-      this.requestJSON('PUT', id, params, data, callback);
-    }
+  async del (id, params) {
+    return await this.requestJSON('DELETE', id, params, null);
+  }
 
-    post(id, params, data, callback) {
-      this.requestJSON('POST', id, params, data, callback);
-    }
+  async get (id, params) {
+    return await this.requestJSON('GET', id, params, null);
+  }
 
-    del(id, params, callback) {
-      this.requestJSON('DELETE', id, params, null, callback);
-    }
+  /* Request methods */
 
-    get(id, params, callback) {
-      this.requestJSON('GET', id, params, null, callback);
-    }
+  async requestJSON (method, id, params, data) {
+    return await this.__request__(true, method, id, params, data);
+  }
 
-    /* Request methods */
+  async request (method, id, params, data) {
+    return await this.__request__(false, method, id, params, data);
+  }
 
-    requestJSON(method, id, params, data, callback) {
-      return this.__request__(true, method, id, params, data, callback);
-    }
+  async stream (method, data, onMessage) {
 
-    request(method, id, params, data, callback) {
-      return this.__request__(false, method, id, params, data, callback);
-    }
+    let headers = this.__formatHeaders__();
+    let url = this.path;
 
-    stream(method, data, onMessage, callback) {
+    let res = await this.__send__(method, url, headers, data);
+    let buffers = [];
+    res.on('data', chunk => {
+      buffers.push(chunk);
+      onMessage(chunk);
+    });
 
-      let headers = this.__formatHeaders__();
-      let url = this.path;
+    return new Promise((resolve, reject) => {
+      res.on('end', () => resolve(Buffer.concat(buffers)));
+    });
 
-      this.__send__(method, url, headers, data, (err, res) => {
+  }
 
-        if (err) {
-          return callback(err);
+  __formatHeaders__ () {
+
+    let headers = {};
+
+    Object.keys(this.parent._headers).forEach(k => headers[k] = this.parent._headers[k]);
+    Object.keys(this._headers).forEach(k => headers[k] = this._headers[k]);
+
+    return headers;
+
+  }
+
+  async __request__ (expectJSON, method, id, params, data) {
+
+    params = this.parent.serialize(params, true);
+
+    let path = this.path;
+    let headers = this.__formatHeaders__();
+
+    if (data && typeof data === 'object' && !(data instanceof Buffer)) {
+      try {
+        if (data.hasOwnProperty('__serialize__')) {
+          delete data.__serialize__;
+          data = this.parent.serialize(data);
+          headers['Content-Type'] = 'application/x-www-form-urlencoded';
+        } else {
+          data = JSON.stringify(data);
+          headers['Content-Type'] = 'application/json; charset=utf-8';
         }
-
-        let buffers = [];
-
-        res.on('data', chunk => {
-          buffers.push(chunk);
-          onMessage(chunk);
-        });
-
-        res.on('end', () => {
-          callback(null, Buffer.concat(buffers));
-        });
-
-      });
-
-    }
-
-    __formatHeaders__() {
-
-      let headers = {};
-
-      Object.keys(this.parent._headers).forEach(k => headers[k] = this.parent._headers[k]);
-      Object.keys(this._headers).forEach(k => headers[k] = this._headers[k]);
-
-      return headers;
-
-    }
-
-    __request__(expectJSON, method, id, params, data, callback) {
-
-      params = this.parent.serialize(params, true);
-
-      let path = this.path;
-      let headers = this.__formatHeaders__();
-
-      if (data && typeof data === 'object' && !(data instanceof Buffer)) {
-        try {
-          if (data.hasOwnProperty('__serialize__')) {
-            delete data.__serialize__;
-            data = this.parent.serialize(data);
-            headers['Content-Type'] = 'application/x-www-form-urlencoded';
-          } else {
-            data = JSON.stringify(data);
-            headers['Content-Type'] = 'application/json; charset=utf-8';
-          }
-        } catch (e) {
-          // do nothing
-        }
+      } catch (e) {
+        // do nothing
       }
-
-      let url = `${path}${id ? '/' + id : ''}?${params}`;
-
-      this.__send__(method, url, headers, data, (err, res) => {
-
-        if (err) {
-          return callback(new Error('Server unavailable'), {}, {}, 0);
-        }
-
-        let buffers = [];
-        res
-          .on('data', (chunk) => buffers.push(chunk))
-          .on('end', () => {
-
-            let response;
-
-            if ((res.headers['content-type'] || '').split(';')[0] === 'application/json') {
-
-              let str = Buffer.concat(buffers).toString();
-
-              try {
-                response = JSON.parse(str);
-              } catch (e) {
-                return callback(new Error(['Unexpected server response:', str].join('\n')), {});
-              }
-
-              if (response.meta && response.meta.error) {
-
-                let error = new Error(response.meta.error.message);
-
-                if (response.meta.error.details) {
-                  error.details = response.meta.error.details;
-                }
-
-                return callback(error, response, res.headers, res.statusCode);
-
-              }
-
-            } else {
-
-              response = Buffer.concat(buffers);
-
-            }
-
-            if (response instanceof Buffer && Math.floor(res.statusCode / 100) !== 2) {
-
-              return callback(new Error(response.toString()), response, res.headers, res.statusCode);
-
-            } else {
-
-              return callback(null, response, res.headers, res.statusCode);
-
-            }
-
-          });
-
-      });
-
     }
 
-    __send__(method, url, headers, data, callback) {
+    let url = `${path}${id ? '/' + id : ''}?${params}`;
 
+    let res = await this.__send__(method, url, headers, data);
+    let buffers = [];
+    res.on('data', chunk => buffers.push(chunk))
+
+    return new Promise((resolve, reject) => {
+      res.on('end', () => {
+
+        let response;
+
+        if ((res.headers['content-type'] || '').split(';')[0] === 'application/json') {
+          let str = Buffer.concat(buffers).toString();
+          try {
+            response = JSON.parse(str);
+          } catch (e) {
+            return reject(new Error(['Unexpected server response:', str].join('\n')));
+          }
+          if (response.meta && response.meta.error) {
+            let error = new Error(response.meta.error.message);
+            if (response.meta.error.details) {
+              error.details = response.meta.error.details;
+            }
+            return reject(error)
+          }
+        } else {
+          response = Buffer.concat(buffers);
+        }
+
+        if (response instanceof Buffer && Math.floor(res.statusCode / 100) !== 2) {
+          return reject(new Error(response.toString()));
+        } else {
+          return resolve(response);
+        }
+
+      });
+    });
+
+  }
+
+  async __send__(method, url, headers, data) {
+
+    return new Promise((resolve, reject) => {
       (this.parent.ssl ? https : http).request(
         {
           headers: headers,
@@ -198,108 +168,109 @@ module.exports = (() => {
           port: this.parent.port,
           path: url
         },
-        (res) => callback(null, res)
+        res => resolve(res)
       )
-      .on('error', (err) => callback(new Error('Server unavailable')))
+      .on('error', (err) => reject(new Error(`Server unavailable: ${method} ${this.parent.host}:${this.parent.port}${url}`)))
       .end(data || null);
-
-    }
-
-  }
-
-  class APIResource {
-
-    constructor(host, port, ssl) {
-
-      if (host.indexOf('https://') === 0) {
-        host = host.substr(8);
-        port = parseInt(port) || 443;
-        ssl = true;
-      } else if (host.indexOf('http://') === 0) {
-        host = host.substr(7);
-        port = parseInt(port) || 80;
-        ssl = false;
-      } else {
-        port = parseInt(port) || 80;
-        ssl = false;
-      }
-
-      if (port === 443) {
-        ssl = true;
-      }
-
-      if (host.split(':').length > 1) {
-        let split = host.split(':');
-        host = split[0];
-        port = parseInt(split[1]);
-      }
-
-      this.host = host;
-      this.port = port;
-      this.ssl = ssl;
-      this._headers = {};
-
-    }
-
-    authorize(accessToken) {
-      this._headers.Authorization = `Bearer ${accessToken}`;
-    }
-
-    __convert__(keys, isArray, v) {
-      isArray = ['', '[]'][isArray | 0];
-      return (keys.length < 2) ? (
-        [keys[0], isArray, '=', v].join('')
-      ) : (
-        [keys[0], '[' + keys.slice(1).join(']['), ']', isArray, '=', v].join('')
-      );
-    }
-
-    __serialize__(obj, keys, key, i) {
-
-      keys = keys.concat([key]);
-      let datum = obj;
-
-      keys.forEach(key => datum = datum[key]);
-
-      if (datum instanceof Date) {
-
-        datum = [datum.getFullYear(), datum.getMonth() + 1, datum.getDate()].join('-');
-
-      }
-
-      if (datum instanceof Array) {
-
-        return datum.map(fnConvert.bind(null, keys, true)).join('&');
-
-      } else if (typeof datum === 'object' && datum !== null) {
-
-        return Object.keys(datum).map(this.__serialize__.bind(null, obj, keys)).join('&');
-
-      }
-
-      return this.__convert__(keys, false, datum);
-
-    }
-
-    serialize(obj, URIEncoded) {
-
-      obj = obj || {};
-
-      let newObj = {};
-      Object.keys(obj).forEach(k => newObj[k] = URIEncoded ? encodeURIComponent(obj[k]) : obj[k]);
-
-      return Object.keys(newObj).map(this.__serialize__.bind(this, newObj, [])).join('&');
-
-    }
-
-    request(path) {
-
-      return new APIResourceRequest(this, path);
-
-    }
+    });
 
   }
 
-  return APIResource;
+}
 
-})();
+class APIResource {
+
+  constructor (host, port, ssl) {
+
+    host = host || '';
+
+    if (host.indexOf('https://') === 0) {
+      host = host.substr(8);
+      port = parseInt(port) || 443;
+      ssl = true;
+    } else if (host.indexOf('http://') === 0) {
+      host = host.substr(7);
+      port = parseInt(port) || 80;
+      ssl = false;
+    } else {
+      port = parseInt(port) || 80;
+      ssl = false;
+    }
+
+    if (port === 443) {
+      ssl = true;
+    }
+
+    if (host.split(':').length > 1) {
+      let split = host.split(':');
+      host = split[0];
+      port = parseInt(split[1]);
+    }
+
+    this.host = host;
+    this.port = port;
+    this.ssl = ssl;
+    this._headers = {};
+
+  }
+
+  authorize (accessToken) {
+    this._headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  __convert__ (keys, isArray, v) {
+    isArray = ['', '[]'][isArray | 0];
+    return (keys.length < 2) ? (
+      [keys[0], isArray, '=', v].join('')
+    ) : (
+      [keys[0], '[' + keys.slice(1).join(']['), ']', isArray, '=', v].join('')
+    );
+  }
+
+  __serialize__ (obj, keys, key, i) {
+
+    keys = keys.concat([key]);
+    let datum = obj;
+
+    keys.forEach(key => datum = datum[key]);
+
+    if (datum instanceof Date) {
+
+      datum = [datum.getFullYear(), datum.getMonth() + 1, datum.getDate()].join('-');
+
+    }
+
+    if (datum instanceof Array) {
+
+      return datum.map(fnConvert.bind(null, keys, true)).join('&');
+
+    } else if (typeof datum === 'object' && datum !== null) {
+
+      return Object.keys(datum).map(this.__serialize__.bind(null, obj, keys)).join('&');
+
+    }
+
+    return this.__convert__(keys, false, datum);
+
+  }
+
+  serialize (obj, URIEncoded) {
+
+    obj = obj || {};
+
+    let newObj = {};
+    Object.keys(obj).forEach(k => newObj[k] = URIEncoded ? encodeURIComponent(obj[k]) : obj[k]);
+
+    return Object.keys(newObj).map(this.__serialize__.bind(this, newObj, [])).join('&');
+
+  }
+
+  request (path) {
+
+    return new APIResourceRequest(this, path);
+
+  }
+
+}
+
+module.exports = APIResource;
