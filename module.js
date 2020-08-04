@@ -1,5 +1,6 @@
 const https = require('https');
 const http = require('http');
+const zlib = require('zlib');
 
 class APIResourceRequest {
 
@@ -121,15 +122,22 @@ class APIResourceRequest {
 
     let res = await this.__send__(method, url, headers, data);
     let buffers = [];
-    res.on('data', chunk => buffers.push(chunk))
+    res.on('data', chunk => buffers.push(chunk));
 
     return new Promise((resolve, reject) => {
       res.on('end', () => {
 
         let response;
+        let buffer = Buffer.concat(buffers);
+
+        if (res.headers['content-encoding'] === 'gzip') {
+          buffer = zlib.gunzipSync(buffer);
+        } else if (res.headers['content-encoding'] === 'deflate') {
+          buffer = zlib.inflateSync(buffer);
+        }
 
         if ((res.headers['content-type'] || '').split(';')[0] === 'application/json') {
-          let str = Buffer.concat(buffers).toString();
+          let str = buffer.toString();
           try {
             response = JSON.parse(str);
           } catch (e) {
@@ -143,7 +151,7 @@ class APIResourceRequest {
             return reject(error)
           }
         } else {
-          response = Buffer.concat(buffers);
+          response = buffer;
         }
 
         if (response instanceof Buffer && Math.floor(res.statusCode / 100) !== 2) {
@@ -210,7 +218,9 @@ class APIResource {
     this.host = host;
     this.port = port;
     this.ssl = ssl;
-    this._headers = {};
+    this._headers = {
+      'accept-encoding': 'gzip, deflate'
+    };
 
   }
 
