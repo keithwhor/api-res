@@ -134,6 +134,8 @@ class APIResourceRequest {
           buffer = zlib.gunzipSync(buffer);
         } else if (res.headers['content-encoding'] === 'deflate') {
           buffer = zlib.inflateSync(buffer);
+        } else if (res.headers['content-encoding'] === 'br') {
+          buffer = zlib.brotliDecompressSync(buffer);
         }
 
         if ((res.headers['content-type'] || '').split(';')[0] === 'application/json') {
@@ -219,7 +221,7 @@ class APIResource {
     this.port = port;
     this.ssl = ssl;
     this._headers = {
-      'accept-encoding': 'gzip, deflate'
+      'accept-encoding': 'gzip, deflate, br'
     };
 
   }
