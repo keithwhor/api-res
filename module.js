@@ -146,11 +146,14 @@ class APIResourceRequest {
             return reject(new Error(['Unexpected server response:', str].join('\n')));
           }
           if (response.meta && response.meta.error) {
-            let error = new Error(response.meta.error.message);
+            let error = {
+              statusCode: res.statusCode,
+              message: response.meta.error.message
+            };
             if (response.meta.error.details) {
               error.details = response.meta.error.details;
             }
-            return reject(error)
+            return reject(error);
           }
         } else {
           response = buffer;
