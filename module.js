@@ -150,6 +150,7 @@ class APIResourceRequest {
             if (response.meta.error.details) {
               error.details = response.meta.error.details;
             }
+            error.statusCode = res.statusCode;
             return reject(error)
           }
         } else {
@@ -157,7 +158,9 @@ class APIResourceRequest {
         }
 
         if (response instanceof Buffer && Math.floor(res.statusCode / 100) !== 2) {
-          return reject(new Error(response.toString()));
+          let error = new Error(response.toString());
+          error.statusCode = res.statusCode;
+          return reject(error);
         } else {
           return resolve(response);
         }
